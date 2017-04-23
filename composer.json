@@ -1,0 +1,13 @@
+{
+    "name": "root/credits",
+    "authors": [
+        {
+            "name": "teranchristian",
+            "email": "chris.teran@gmail.com"
+        }
+    ],
+    "require": {
+        "php-ffmpeg/php-ffmpeg": "^0.9.2",
+        "thiagoalessio/tesseract_ocr": "1.0.0-RC"
+    }
+}
