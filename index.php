@@ -15,8 +15,49 @@ foreach ($iter as $file) {
 
     $fileName = $file->getFilename();
 
-    $closedCaptioning = getClosedCaptioning($fileName);
-exit;
+    $beforeCredits = getClosedCaptioning($fileName);
+    // $beforeCredits = 4136;
+    $credits = findCredits($fileName, $beforeCredits);
+}
+
+function findCredits($video, $beforeCredits) {
+    global $videoDirectory;
+    $videoPath = "{$videoDirectory}/".$video;
+    $fileName =  pathinfo($video, PATHINFO_FILENAME);
+    $fileName = preg_replace('/\s+/', '-', $fileName);
+    $videoCDir = "./tmp/creadits-{$fileName}";
+    if (!file_exists($videoCDir)) {
+        mkdir($videoCDir, 0700);
+    }
+    $ffmpeg = FFMpeg\FFMpeg::create();
+    // $duration = (int)$ffmpeg->getFFProbe()
+    //             ->format($videoPath)
+    //             ->get('duration');
+    $count = 0;
+    $found = true;
+    $break = $beforeCredits;
+    while ($found) { 
+        $break++;
+        $fileImg = "{$videoCDir}/{$fileName}-{$break}.png";
+        $video = $ffmpeg->open($videoPath)
+            ->frame(FFMpeg\Coordinate\TimeCode::fromSeconds($break))
+            ->save($fileImg);
+
+        if (!file_exists($fileImg)) {
+            continue;
+        }
+
+        $cc = (new TesseractOCR($fileImg))->run();
+        if (!empty($cc)) {
+            $count++;
+
+            if ($count === 1) {
+                $found = false;
+            }
+        } else {
+            $count = 0;
+        }
+    }
 }
 
 function getClosedCaptioning($video) {
@@ -33,20 +74,20 @@ function getClosedCaptioning($video) {
     $duration = (int)$ffmpeg->getFFProbe()
                 ->format($videoPath)
                 ->get('duration');
-
-    $count = 1;
-    for ($sec=1; $sec < $videoBreak; $sec+=2) { 
+    $duration-=60;
+    $count = 0;
+    for ($sec=1; $sec < $videoBreak; $sec+=10) { 
         $break = $duration - $sec;
         $fileImg = "{$videoCCDir}/{$fileName}-{$break}.png";
         $video = $ffmpeg->open($videoPath)
             ->frame(FFMpeg\Coordinate\TimeCode::fromSeconds($break))
             ->save($fileImg);
-        continue;
+
         if (!file_exists($fileImg)) {
             continue;
         }
         $cc = (new TesseractOCR($fileImg))->run();
-        if ($break < $duration-60) {
+        if ($break < $duration) {
             // echo $fileImg." </br>";
             // $t = $duration-60;
             // echo "{$break} > ".$t." </br>";
@@ -54,11 +95,8 @@ function getClosedCaptioning($video) {
             if (empty($cc)) {
                 $count++;
 
-                if ($count === 7) {
-                    echo $fileImg;
-                    echo gmdate("H:i:s", $break);
-                    echo " </br> ===== </br>";
-                    return 1;
+                if ($count === 2) {
+                    return $break;
                 }
             } else {
                 $count = 0;
