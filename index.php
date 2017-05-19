@@ -1,111 +1,176 @@
 <?php
 require_once __DIR__.'/vendor/autoload.php';
 
-
 $videoDirectory = "./videos";
-$videoBreak = "500";
-$percentage = 5;
 $iter = new DirectoryIterator($videoDirectory);
-
-
 foreach ($iter as $file) { 
     if ($file->isDot()) {
         continue;
     }
-
     $fileName = $file->getFilename();
-
-    $beforeCredits = getClosedCaptioning($fileName);
-    // $beforeCredits = 4136;
-    $credits = findCredits($fileName, $beforeCredits);
+    $findCredits = findCredits($fileName);
+    $startTime = findCreditsStartTime($fileName, $findCredits);
+    echo $fileName. gmdate("H:i:s", $startTime)."</br>";
+    exit;
 }
 
-function findCredits($video, $beforeCredits) {
+function findCredits($video) {
     global $videoDirectory;
-    $videoPath = "{$videoDirectory}/".$video;
-    $fileName =  pathinfo($video, PATHINFO_FILENAME);
-    $fileName = preg_replace('/\s+/', '-', $fileName);
-    $videoCDir = "./tmp/creadits-{$fileName}";
-    if (!file_exists($videoCDir)) {
-        mkdir($videoCDir, 0700);
-    }
-    $ffmpeg = FFMpeg\FFMpeg::create();
-    // $duration = (int)$ffmpeg->getFFProbe()
-    //             ->format($videoPath)
-    //             ->get('duration');
-    $count = 0;
-    $found = true;
-    $break = $beforeCredits;
-    while ($found) { 
-        $break++;
-        $fileImg = "{$videoCDir}/{$fileName}-{$break}.png";
-        $video = $ffmpeg->open($videoPath)
-            ->frame(FFMpeg\Coordinate\TimeCode::fromSeconds($break))
-            ->save($fileImg);
-
-        if (!file_exists($fileImg)) {
-            continue;
-        }
-
-        $cc = (new TesseractOCR($fileImg))->run();
-        if (!empty($cc)) {
-            $count++;
-
-            if ($count === 1) {
-                $found = false;
-            }
-        } else {
-            $count = 0;
-        }
-    }
-}
-
-function getClosedCaptioning($video) {
-    global $videoDirectory, $videoBreak;
-    $fileName =  pathinfo($video, PATHINFO_FILENAME);
-    $fileName = preg_replace('/\s+/', '-', $fileName);
-    $videoCCDir = "./tmp/cc-{$fileName}";
+    
+    $fileName = buildFileName($video);
+    $videoCCDir = "./tmp/pc-{$fileName}";
     if (!file_exists($videoCCDir)) {
         mkdir($videoCCDir, 0700);
     }
 
     $videoPath = "{$videoDirectory}/".$video;
+    $duration = getVideoDuration($videoPath);
+
+    $searchPoint = (int)($duration - ($duration/4));
+
+    while (true) {
+        $pointTime = $searchPoint;
+        $searchPoint = (int)(($duration + $pointTime)/2);
+        if ($duration < $searchPoint) {
+            break;
+        }
+        $count = 0;
+
+        for ($i=0; $i <= 3; $i++) { 
+            $break = $pointTime+$i;
+            $fileImg = "{$videoCCDir}/{$fileName}-{$break}.png";
+            if (file_exists($fileImg)) {
+                break;
+            }
+            
+            $shot = getImageText($videoPath, $fileImg, $break);
+            if (!empty($shot)) {
+                if ($count++ === 2) {
+                    return $pointTime;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function findCreditsStartTime($video, $findCredits)
+{
+    global $videoDirectory;
+    $fileName = buildFileName($video);
+    $videoCCDir = "./tmp/bc-{$fileName}";
+    if (!file_exists($videoCCDir)) {
+        mkdir($videoCCDir, 0700);
+    }
+    $videoPath = "{$videoDirectory}/".$video;
+    $duration = getVideoDuration($videoPath);
+
+    $lap = 0;
+    $count = 0;
+    while (true) {
+        $lap += 5;
+        $break = $findCredits - $lap;
+        $fileImg = "{$videoCCDir}/{$fileName}-{$break}.png";
+        if (file_exists($fileImg)) {
+            break;
+        }
+
+        $shot = getImageText($videoPath, $fileImg, $break);
+        if (empty($shot)) {
+            if ($count++ === 2) {
+                return $break;
+            }
+        } else {
+            $count = 0;
+        }
+    }
+    return false;
+}
+
+function getVideoDuration($videoPath) {
     $ffmpeg = FFMpeg\FFMpeg::create();
     $duration = (int)$ffmpeg->getFFProbe()
                 ->format($videoPath)
                 ->get('duration');
-    $duration-=60;
-    $count = 0;
-    for ($sec=1; $sec < $videoBreak; $sec+=10) { 
-        $break = $duration - $sec;
-        $fileImg = "{$videoCCDir}/{$fileName}-{$break}.png";
-        $video = $ffmpeg->open($videoPath)
-            ->frame(FFMpeg\Coordinate\TimeCode::fromSeconds($break))
-            ->save($fileImg);
-
-        if (!file_exists($fileImg)) {
-            continue;
-        }
-        $cc = (new TesseractOCR($fileImg))->run();
-        if ($break < $duration) {
-            // echo $fileImg." </br>";
-            // $t = $duration-60;
-            // echo "{$break} > ".$t." </br>";
-            // continue;
-            if (empty($cc)) {
-                $count++;
-
-                if ($count === 2) {
-                    return $break;
-                }
-            } else {
-                $count = 0;
-            }
-        }
-    }
-    // rrmdir($videoCCDir);
-    // exit;*/
+    return $duration;
 }
+
+function getImageText($videoPath, $fileImg, $break)
+{
+    $ffmpeg = FFMpeg\FFMpeg::create();
+    $video = $ffmpeg->open($videoPath)
+                ->frame(FFMpeg\Coordinate\TimeCode::fromSeconds($break))
+                ->save($fileImg);
+    $shot = (new TesseractOCR($fileImg))->run();
+    return $shot;
+}
+
+function buildFileName($file)
+{
+    $fileName =  pathinfo($file, PATHINFO_FILENAME);
+    $fileName = preg_replace('/\s+/', '-', $fileName);
+    return $fileName;
+}
+
+// function getClosedCaptioning($video) {
+//     global $videoDirectory, $videoBreak;
+//     $fileName =  pathinfo($video, PATHINFO_FILENAME);
+//     $fileName = preg_replace('/\s+/', '-', $fileName);
+//     $videoCCDir = "./tmp/cc-{$fileName}";
+//     if (!file_exists($videoCCDir)) {
+//         mkdir($videoCCDir, 0700);
+//     }
+
+//     $videoPath = "{$videoDirectory}/".$video;
+//     $ffmpeg = FFMpeg\FFMpeg::create();
+//     $duration = (int)$ffmpeg->getFFProbe()
+//                 ->format($videoPath)
+//                 ->get('duration');
+//     $duration-=60;
+//     $endTime = $duration;
+//     $startTime = $duration-560;
+//     $found = true;
+//     while ($found) {
+//         $pointTime = (int)(($endTime - $startTime) / 2);
+//         echo "$pointTime </br>";
+//         echo "s: $startTime </br>";
+//         echo "e: $endTime </br>";
+//         echo "</br>";
+//         $endTime -= $pointTime;
+//         if ($pointTime <= 1) {
+//             break;
+//         }
+//         $count = 0;
+
+//         for ($i=0; $i <= 4; $i++) { 
+//             $break = $startTime+$pointTime+$i;
+//             $fileImg = "{$videoCCDir}/{$fileName}-{$break}.png";
+//             echo "</br>";
+//             if (file_exists($fileImg)) {
+//                 $found = false;
+//             }
+//                 $video = $ffmpeg->open($videoPath)
+//                     ->frame(FFMpeg\Coordinate\TimeCode::fromSeconds($break))
+//                     ->save($fileImg);
+
+//             $shot = (new TesseractOCR($fileImg))->run();
+//             if (empty($shot)) {
+//                 $count++;
+
+
+//                 if ($count === 2) {
+//                 echo $fileImg ." ".gmdate("H:i:s", $pointTime);
+//                 $found = false;
+//                 break;
+//                 }
+//             }
+//             $count = 0;
+//         }
+//     }
+
+//     // rrmdir($videoCCDir);
+//     // exit;*/
+// }
 
  function rrmdir($dir) {
    if (is_dir($dir)) {
