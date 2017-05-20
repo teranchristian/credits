@@ -13,7 +13,7 @@ class Finder
         $this->tmpDir = sys_get_temp_dir();
         if (!empty($tmpDir)) {
             if (!file_exists($tmpDir)) {
-                mkdir($tmpDir, 0700);
+                mkdir($tmpDir, 0777);
             }
             $this->tmpDir = $tmpDir;
         }
@@ -25,10 +25,10 @@ class Finder
         $fileName = $this->buildFileName();
 
         $videoCCDir = $this->tmpDir."/fc-{$fileName}";
-        if (!file_exists($videoCCDir)) {
-            mkdir($videoCCDir, 0700);
-        }
 
+        if (!file_exists($videoCCDir)) {
+            mkdir($videoCCDir, 755);
+        }
         $duration = $this->getVideoDuration();
         $searchPoint = (int)($duration - ($duration/4));
 
