@@ -9,5 +9,8 @@
     "require": {
         "php-ffmpeg/php-ffmpeg": "^0.9.2",
         "thiagoalessio/tesseract_ocr": "1.0.0-RC"
+    },
+    "autoload": {
+        "psr-4": { "": "src/" }
     }
 }

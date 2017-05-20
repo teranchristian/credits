@@ -1,116 +1,26 @@
 <?php
-require_once __DIR__.'/vendor/autoload.php';
+require_once __DIR__.'/../vendor/autoload.php';
+define("BASE_PATH", realpath(__DIR__.'/../'));
 
-$videoDirectory = "./videos";
+use Credits\Finder;
+
+$videoDirectory = BASE_PATH."/videos";
 $iter = new DirectoryIterator($videoDirectory);
 foreach ($iter as $file) { 
     if ($file->isDot()) {
         continue;
     }
-    $fileName = $file->getFilename();
-    $findCredits = findCredits($fileName);
-    $startTime = findCreditsStartTime($fileName, $findCredits);
+    $t = new Finder($file, '../tmp2');
+    $d = $t->getVideoDuration();
+    $f = $t->findCredits();
+    $startTime = $t->findCreditsStartTime($f);
+    var_dump(gmdate("H:i:s", $startTime));
+    exit;
     echo $fileName. gmdate("H:i:s", $startTime)."</br>";
     exit;
 }
 
-function findCredits($video) {
-    global $videoDirectory;
-    
-    $fileName = buildFileName($video);
-    $videoCCDir = "./tmp/pc-{$fileName}";
-    if (!file_exists($videoCCDir)) {
-        mkdir($videoCCDir, 0700);
-    }
 
-    $videoPath = "{$videoDirectory}/".$video;
-    $duration = getVideoDuration($videoPath);
-
-    $searchPoint = (int)($duration - ($duration/4));
-
-    while (true) {
-        $pointTime = $searchPoint;
-        $searchPoint = (int)(($duration + $pointTime)/2);
-        if ($duration < $searchPoint) {
-            break;
-        }
-        $count = 0;
-
-        for ($i=0; $i <= 3; $i++) { 
-            $break = $pointTime+$i;
-            $fileImg = "{$videoCCDir}/{$fileName}-{$break}.png";
-            if (file_exists($fileImg)) {
-                break;
-            }
-            
-            $shot = getImageText($videoPath, $fileImg, $break);
-            if (!empty($shot)) {
-                if ($count++ === 2) {
-                    return $pointTime;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-function findCreditsStartTime($video, $findCredits)
-{
-    global $videoDirectory;
-    $fileName = buildFileName($video);
-    $videoCCDir = "./tmp/bc-{$fileName}";
-    if (!file_exists($videoCCDir)) {
-        mkdir($videoCCDir, 0700);
-    }
-    $videoPath = "{$videoDirectory}/".$video;
-    $duration = getVideoDuration($videoPath);
-
-    $lap = 0;
-    $count = 0;
-    while (true) {
-        $lap += 5;
-        $break = $findCredits - $lap;
-        $fileImg = "{$videoCCDir}/{$fileName}-{$break}.png";
-        if (file_exists($fileImg)) {
-            break;
-        }
-
-        $shot = getImageText($videoPath, $fileImg, $break);
-        if (empty($shot)) {
-            if ($count++ === 2) {
-                return $break;
-            }
-        } else {
-            $count = 0;
-        }
-    }
-    return false;
-}
-
-function getVideoDuration($videoPath) {
-    $ffmpeg = FFMpeg\FFMpeg::create();
-    $duration = (int)$ffmpeg->getFFProbe()
-                ->format($videoPath)
-                ->get('duration');
-    return $duration;
-}
-
-function getImageText($videoPath, $fileImg, $break)
-{
-    $ffmpeg = FFMpeg\FFMpeg::create();
-    $video = $ffmpeg->open($videoPath)
-                ->frame(FFMpeg\Coordinate\TimeCode::fromSeconds($break))
-                ->save($fileImg);
-    $shot = (new TesseractOCR($fileImg))->run();
-    return $shot;
-}
-
-function buildFileName($file)
-{
-    $fileName =  pathinfo($file, PATHINFO_FILENAME);
-    $fileName = preg_replace('/\s+/', '-', $fileName);
-    return $fileName;
-}
 
 // function getClosedCaptioning($video) {
 //     global $videoDirectory, $videoBreak;
